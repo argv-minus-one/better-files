@@ -53,10 +53,12 @@ object Resource {
     *
     * @param name Name of the resource to search for.
     * @return InputStream for reading the found resource.
+    * @throws ResourceLookupException if the requested resource was not found or could not be accessed.
     * @see [[https://docs.oracle.com/javase/10/docs/api/java/lang/Class.html#getResourceAsStream(java.lang.String) Class#getResourceAsStream]]
     * @see [[https://docs.oracle.com/javase/10/docs/api/java/lang/ClassLoader.html#getResourceAsStream(java.lang.String) ClassLoader#getResourceAsStream]]
     * @group lookup
     */
+  @throws[ResourceLookupException]
   def apply(name: String): InputStream =
     macro Macros.applyImpl
 
@@ -67,10 +69,12 @@ object Resource {
     *
     * @param name Name of the resource to search for.
     * @return URL of the requested resource.
+    * @throws ResourceLookupException if the requested resource was not found or could not be accessed.
     * @see [[https://docs.oracle.com/javase/10/docs/api/java/lang/Class.html#getResource(java.lang.String) Class#getResource]]
     * @see [[https://docs.oracle.com/javase/10/docs/api/java/lang/ClassLoader.html#getResource(java.lang.String) ClassLoader#getResource]]
     * @group lookup
     */
+  @throws[ResourceLookupException]
   def url(name: String): URL =
     macro Macros.urlImpl
 
@@ -81,10 +85,12 @@ object Resource {
     *
     * @param name Name of the resource to search for.
     * @return File representing the requested resource.
+    * @throws ResourceLookupException if the requested resource was not found or could not be accessed.
     * @see [[https://docs.oracle.com/javase/10/docs/api/java/lang/Class.html#getResource(java.lang.String) Class#getResource]]
     * @see [[https://docs.oracle.com/javase/10/docs/api/java/lang/ClassLoader.html#getResource(java.lang.String) ClassLoader#getResource]]
     * @group lookup
     */
+  @throws[ResourceLookupException]
   def asFile(name: String): File =
     macro Macros.asFileImpl
 
@@ -224,13 +230,27 @@ object Resource {
       }): @silent // scalac generates bogus unused pattern variable warnings here.
     }
 
+    private[this] def generateNullCheck(resourceName: c.Expr[String], resourceGet: TermName => Tree): Tree = {
+      // We need to be sure that none of the parameters passed to the macros are evaluated more than once at run time. To that end, we need to generate code that evaluates the parameter and stores it into a temporary val.
+      // Because quasiquotes are not hygienic, any given name for temporary val could potentially conflict with some other symbol in user code. So, we use freshName to generate a name that won't clash.
+      val n, r = TermName(c.freshName())
+      q"""
+        val $n = $resourceName
+        val $r = ${resourceGet(n)}
+        if ($r eq null)
+          throw new _root_.better.files.ResourceLookupException($n)
+        else
+          $r
+      """
+    }
+
     def asFileImpl(name: c.Expr[String]): Tree =
-      q"_root_.better.files.File($lookupSource.getResource($name))"
+      q"_root_.better.files.File(${urlImpl(name)})"
 
     def applyImpl(name: c.Expr[String]): Tree =
-      q"$lookupSource.getResourceAsStream($name)"
+      generateNullCheck(name, n => q"$lookupSource.getResourceAsStream($n)")
 
     def urlImpl(name: c.Expr[String]): Tree =
-      q"$lookupSource.getResource($name)"
+      generateNullCheck(name, n => q"$lookupSource.getResource($n)")
   }
 }

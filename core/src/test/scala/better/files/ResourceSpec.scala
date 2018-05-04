@@ -12,6 +12,8 @@ final class ResourceSpec extends CommonSpec {
   val testFileRel      = "test-file.txt"
   val testFileAltRel   = "another-test-file.txt"
   val testFileFromCL   = "files/test-file.txt"
+  val testMissing      = "better/files/nonexistent-file.txt"
+  val testMissingRel   = "nonexistent-file.txt"
 
   "Resource" can "look up from the context class loader" in {
     assert(Resource.asFile(testFile).contentAsString startsWith testFileText)
@@ -60,5 +62,35 @@ final class ResourceSpec extends CommonSpec {
 
   "Resource.at" should "require a concrete type" in {
     """def foo[T] = better.files.Resource.at[T]("foo")""" shouldNot typeCheck
+  }
+
+  "ResourceLookupException" should "be thrown if the requested resource doesn't exist" in {
+    def check(f: => Any) =
+      a[ResourceLookupException] should be thrownBy f
+
+    check(Resource(testMissing))
+    check(Resource.url(testMissing))
+    check(Resource.asFile(testMissing))
+
+    check(Resource.my(testMissingRel))
+    check(Resource.my.url(testMissingRel))
+    check(Resource.my.asFile(testMissingRel))
+
+    check(Resource.at[ResourceSpec](testMissingRel))
+    check(Resource.at[ResourceSpec].url(testMissingRel))
+    check(Resource.at[ResourceSpec].asFile(testMissingRel))
+
+    {
+      val testClass = Class forName "better.files.File"
+      check(Resource.at(testClass)(testMissingRel))
+      check(Resource.at(testClass).url(testMissingRel))
+      check(Resource.at(testClass).asFile(testMissingRel))
+    }
+
+    check(Resource.at[ResourceSpecHelper](testMissingRel))
+    check(Resource.at[ResourceSpecHelper].url(testMissingRel))
+    check(Resource.at[ResourceSpecHelper].asFile(testMissingRel))
+
+    check((new ResourceSpecHelper).nonexistentTestFile)
   }
 }
